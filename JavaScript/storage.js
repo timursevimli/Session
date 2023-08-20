@@ -1,63 +1,59 @@
 'use strict';
 
-const fs = require('node:fs');
+const fsp = require('node:fs/promises');
 const path = require('node:path');
 const v8 = require('node:v8');
 
 const PATH = `${__dirname}/sessions`;
 
-const safePath = (fn) => (token, ...args) => {
-  const callback = args[args.length - 1];
+const exist = async (file) => {
+  const toBool = [() => true, () => false];
+  const isExist = await fsp.access(file).then(...toBool);
+  return isExist;
+};
+
+const safePath = (fn) => async (token, ...args) => {
   if (typeof token !== 'string') {
-    callback(new Error('Invalid session token'));
-    return;
+    throw new Error('Invalid session token');
   }
   const fileName = path.join(PATH, token);
   if (!fileName.startsWith(PATH)) {
-    callback(new Error('Invalid session token'));
-    return;
+    throw new Error('Invalid session token');
   }
-  fn(fileName, ...args);
+  if (!exist(fileName)) {
+    console.log('Token not found!');
+    throw new Error('Invalid session token');
+  }
+  return await fn(fileName, ...args);
 };
 
-const readSession = safePath(fs.readFile);
-const writeSession = safePath(fs.writeFile);
-const deleteSession = safePath(fs.unlink);
+const readSession = safePath(fsp.readFile);
+const writeSession = safePath(fsp.writeFile);
+const deleteSession = safePath(fsp.unlink);
 
 class Storage extends Map {
-  get(key, callback) {
+  async get(key) {
     const value = super.get(key);
-    if (value) {
-      callback(null, value);
-      return;
-    }
-    readSession(key, (err, data) => {
-      if (err) {
-        callback(err);
-        return;
-      }
-      console.log(`Session loaded: ${key}`);
-      const session = v8.deserialize(data);
-      super.set(key, session);
-      callback(null, session);
-    });
+    if (value) return value;
+    const data = await readSession(key);
+    console.log(`Session loaded: ${key}`);
+    const session = v8.deserialize(data);
+    super.set(key, session);
+    return session;
   }
 
-  save(key) {
+  async save(key) {
     const value = super.get(key);
     if (value) {
       const data = v8.serialize(value);
-      writeSession(key, data, () => {
-        console.log(`Session saved: ${key}`);
-      });
+      await writeSession(key, data);
+      console.log(`Session saved: ${key}`);
     }
   }
 
-  delete(key) {
+  async delete(key) {
     console.log('Delete: ', key);
-    deleteSession(key, () => {
-      console.log(`Session deleted: ${key}`);
-    });
+    return await deleteSession(key);
   }
 }
 

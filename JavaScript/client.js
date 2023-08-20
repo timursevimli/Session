@@ -27,7 +27,11 @@ class Client {
 
   static async getInstance(req, res) {
     const client = new Client(req, res);
-    await Session.restore(client);
+    try {
+      await Session.restore(client);
+    } catch (err) {
+      console.log(err.message);
+    }
     return client;
   }
 
@@ -58,7 +62,7 @@ class Client {
 
   sendCookie() {
     const { res, preparedCookie } = this;
-    if (preparedCookie.length && !res.headersSent) {
+    if (preparedCookie.length > 0 && !res.headersSent) {
       console.dir({ preparedCookie });
       res.setHeader('Set-Cookie', preparedCookie);
     }

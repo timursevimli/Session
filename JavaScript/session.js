@@ -36,30 +36,33 @@ class Session extends Map {
     return session;
   }
 
-  static restore(client) {
+  static async restore(client) {
     const { cookie } = client;
-    if (!cookie) return;
+    if (!cookie) throw new Error('No session');
     const sessionToken = cookie.token;
-    if (sessionToken) {
-      return new Promise((resolve, reject) => {
-        storage.get(sessionToken, (err, session) => {
-          if (err) reject(new Error('No session'));
-          Object.setPrototypeOf(session, Session.prototype);
-          client.token = sessionToken;
-          client.session = session;
-          resolve(session);
-        });
-      });
+    if (!sessionToken) throw new Error('No session');
+    try {
+      const session = await storage.get(sessionToken);
+      Object.setPrototypeOf(session, Session.prototype);
+      client.token = sessionToken;
+      client.session = session;
+      return session;
+    } catch (err) {
+      throw new Error('No session');
     }
   }
 
-  static delete(client) {
+  static async delete(client) {
     const { token } = client;
-    if (token) {
-      client.deleteCookie('token');
-      client.token = undefined;
-      client.session = null;
-      storage.delete(token);
+    if (!token) return false;
+    client.deleteCookie('token');
+    client.token = undefined;
+    client.session = null;
+    try {
+      await storage.delete(token);
+      return { token };
+    } catch (err) {
+      return { token: undefined };
     }
   }
 

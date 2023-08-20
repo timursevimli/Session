@@ -12,9 +12,8 @@ const routing = {
     return `Session token is: ${client.token}`;
   },
   '/destroy': async (client) => {
-    const result = `Session destroyed: ${client.token}`;
-    Session.delete(client);
-    return result;
+    const { token } = await Session.delete(client);
+    return token ? `Session destroyed: ${token}` : 'Session not found!';
   },
   '/api/method1': async (client) => {
     if (client.session) {
@@ -24,18 +23,20 @@ const routing = {
       return { data: 'access is denied' };
     }
   },
-  '/api/method2': async (client) => ({
-    url: client.req.url,
-    headers: client.req.headers,
-  }),
-  '/api/method3': async (client) => {
-    if (client.session) {
-      return [...client.session.entries()]
-        .map(([key, value]) => `<b>${key}</b>: ${value}<br>`)
-        .join();
-    }
-    return 'No session found';
+  '/api/method2': async (client) => {
+    if (client.session) client.session.set('method2', 'called');
+    return {
+      url: client.req.url,
+      headers: client.req.headers,
+    };
   },
+  '/api/method3': async (client) => {
+    if (!client.session) return 'No session found';
+    client.session.set('method3', 'called');
+    return [...client.session.entries()]
+      .map(([key, value]) => `<b>${key}</b>: ${value}<br>`)
+      .join();
+  }
 };
 
 const types = {
@@ -43,6 +44,11 @@ const types = {
   string: (s) => s,
   number: (n) => n.toString(),
   undefined: () => 'not found',
+};
+
+const httpError = (res, code, msg) => {
+  res.statusCode = code;
+  res.end(msg);
 };
 
 http.createServer(async (req, res) => {
@@ -53,20 +59,19 @@ http.createServer(async (req, res) => {
   res.on('finish', () => {
     if (client.session) client.session.save();
   });
-  if (!handler) {
-    res.statusCode = 404;
-    res.end('Not found 404');
-    return;
-  }
-  handler(client).then((data) => {
-    const type = typeof data;
-    const serializer = types[type];
-    const result = serializer(data);
-    client.sendCookie();
-    res.end(result);
-  }, (err) => {
-    res.statusCode = 500;
-    res.end('Internal Server Error 500');
-    console.log(err);
-  });
+  if (!handler) return void httpError(res, 404, 'Not Found 404');
+  handler(client)
+    .then(
+      (data) => {
+        const type = typeof data;
+        const serializer = types[type];
+        const result = serializer(data);
+        client.sendCookie();
+        res.end(result);
+      },
+      (err) => {
+        httpError(res, 500, 'Server Error 500');
+        console.log(err);
+      }
+    );
 }).listen(8000);
