@@ -20,7 +20,8 @@ const safePath = (fn) => async (token, ...args) => {
   if (!fileName.startsWith(PATH)) {
     throw new Error('Invalid session token');
   }
-  if (!exist(fileName)) {
+  const tokenExist = await exist(fileName);
+  if (!tokenExist) {
     console.log('Token not found!');
     throw new Error('Invalid session token');
   }
